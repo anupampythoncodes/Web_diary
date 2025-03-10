@@ -7,10 +7,9 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-const mongo_uri = "mongodb+srv://anupamsingh1414:rishisingh@instadata.wxmcy.mongodb.net/
 // Connect to MongoDB
 mongoose
-  .connect(mongo_uri, {
+  .connect(process.env.mongo_uri, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
