@@ -7,7 +7,7 @@ app.use(express.json());
 app.use(cors());
 
 mongoose
-  .connect(process.env.mongo_uri, {
+  .connect(process.end.mongo_uri, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
@@ -15,28 +15,37 @@ mongoose
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
 // Define Schema
-const chapterSchema = new mongoose.Schema({
-  name: String, // User's name
-  title: String, // Chapter title
-  content: { type: String, default: "" }, // Chapter content
-  createdAt: { type: Date, default: Date.now }, // Timestamp
+const userSchema = new mongoose.Schema({
+  name: { type: String, unique: true, required: true }, // User's name (unique)
+  chapters: [
+    {
+      title: String,
+      content: { type: String, default: "" },
+      createdAt: { type: Date, default: Date.now },
+    },
+  ],
 });
 
 // Create Model
-const Chapter = mongoose.model("Chapter", chapterSchema);
+const UserDiary = mongoose.model("UserDiary", userSchema);
 
-// 🔹 Get all chapters for a user
+// 🔹 Get user's diary (all chapters)
 app.get("/diary/:name", async (req, res) => {
   try {
     const { name } = req.params;
-    const chapters = await Chapter.find({ name }).sort({ createdAt: 1 }); // Sort by date
-    res.json(chapters);
+    let userDiary = await UserDiary.findOne({ name });
+
+    if (!userDiary) {
+      userDiary = await new UserDiary({ name, chapters: [] }).save(); // Create entry if not exists
+    }
+
+    res.json(userDiary.chapters);
   } catch (error) {
-    res.status(500).json({ error: "Error fetching chapters" });
+    res.status(500).json({ error: "Error fetching diary" });
   }
 });
 
-// 🔹 Add a new chapter
+// 🔹 Add a new chapter to user's diary
 app.post("/diary/:name/add", async (req, res) => {
   try {
     const { name } = req.params;
@@ -44,8 +53,15 @@ app.post("/diary/:name/add", async (req, res) => {
 
     if (!title) return res.status(400).json({ error: "Title is required" });
 
-    const newChapter = new Chapter({ name, title });
-    await newChapter.save();
+    let userDiary = await UserDiary.findOne({ name });
+
+    if (!userDiary) {
+      userDiary = new UserDiary({ name, chapters: [] });
+    }
+
+    const newChapter = { title, content: "", createdAt: new Date() };
+    userDiary.chapters.push(newChapter);
+    await userDiary.save();
 
     res.json(newChapter);
   } catch (error) {
@@ -53,23 +69,22 @@ app.post("/diary/:name/add", async (req, res) => {
   }
 });
 
-// 🔹 Edit an existing chapter (only content)
-app.put("/diary/:name/edit/:id", async (req, res) => {
+// 🔹 Edit an existing chapter's content
+app.put("/diary/:name/edit/:index", async (req, res) => {
   try {
-    const { id } = req.params;
+    const { name, index } = req.params;
     const { content } = req.body;
 
-    if (!content) return res.status(400).json({ error: "Content cannot be empty" });
+    let userDiary = await UserDiary.findOne({ name });
 
-    const updatedChapter = await Chapter.findByIdAndUpdate(
-      id,
-      { content },
-      { new: true } // Returns updated document
-    );
+    if (!userDiary) return res.status(404).json({ error: "User not found" });
 
-    if (!updatedChapter) return res.status(404).json({ error: "Chapter not found" });
+    if (!userDiary.chapters[index]) return res.status(404).json({ error: "Chapter not found" });
 
-    res.json(updatedChapter);
+    userDiary.chapters[index].content = content;
+    await userDiary.save();
+
+    res.json(userDiary.chapters[index]);
   } catch (error) {
     res.status(500).json({ error: "Error updating chapter" });
   }
