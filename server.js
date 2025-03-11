@@ -16,17 +16,16 @@ mongoose
 
 // Define Schema
 const userSchema = new mongoose.Schema({
-  name: { type: String, unique: true, required: true }, // User's name (unique)
+  name: { type: String, unique: true, required: true },
   chapters: [
     {
-      title: String,
+      title: { type: String, required: true },
       content: { type: String, default: "" },
       createdAt: { type: Date, default: Date.now },
     },
   ],
 });
 
-// Create Model
 const UserDiary = mongoose.model("UserDiary", userSchema);
 
 // 🔹 Get user's diary (all chapters)
@@ -36,7 +35,7 @@ app.get("/diary/:name", async (req, res) => {
     let userDiary = await UserDiary.findOne({ name });
 
     if (!userDiary) {
-      userDiary = await new UserDiary({ name, chapters: [] }).save(); // Create entry if not exists
+      userDiary = await new UserDiary({ name, chapters: [] }).save();
     }
 
     res.json(userDiary.chapters);
@@ -45,13 +44,15 @@ app.get("/diary/:name", async (req, res) => {
   }
 });
 
-// 🔹 Add a new chapter to user's diary
+// 🔹 Add a new chapter
 app.post("/diary/:name/add", async (req, res) => {
   try {
     const { name } = req.params;
     const { title } = req.body;
 
-    if (!title) return res.status(400).json({ error: "Title is required" });
+    if (!title || title.trim() === "") {
+      return res.status(400).json({ error: "Title is required" });
+    }
 
     let userDiary = await UserDiary.findOne({ name });
 
@@ -61,35 +62,44 @@ app.post("/diary/:name/add", async (req, res) => {
 
     const newChapter = { title, content: "", createdAt: new Date() };
     userDiary.chapters.push(newChapter);
+
+    userDiary.markModified("chapters"); // 🔹 Fix: Ensure changes are detected
     await userDiary.save();
 
-    res.json(newChapter);
+    res.json(userDiary.chapters);
   } catch (error) {
     res.status(500).json({ error: "Error adding chapter" });
   }
 });
 
-// 🔹 Edit an existing chapter's content
-app.put("/diary/:name/edit/:index", async (req, res) => {
+// 🔹 Edit chapter content (fixing save issue)
+app.put("/diary/:name/edit/:id", async (req, res) => {
   try {
-    const { name, index } = req.params;
+    const { name, id } = req.params;
     const { content } = req.body;
 
     let userDiary = await UserDiary.findOne({ name });
 
-    if (!userDiary) return res.status(404).json({ error: "User not found" });
+    if (!userDiary) {
+      return res.status(404).json({ error: "User not found" });
+    }
 
-    if (!userDiary.chapters[index]) return res.status(404).json({ error: "Chapter not found" });
+    let chapter = userDiary.chapters.id(id); // Find chapter by MongoDB ID
+    if (!chapter) {
+      return res.status(404).json({ error: "Chapter not found" });
+    }
 
-    userDiary.chapters[index].content = content;
+    chapter.content = content;
+
+    userDiary.markModified("chapters"); // Ensure changes are detected
     await userDiary.save();
 
-    res.json(userDiary.chapters[index]);
+    res.json(userDiary.chapters);
   } catch (error) {
     res.status(500).json({ error: "Error updating chapter" });
   }
 });
 
 // Start Server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 7000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
